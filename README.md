@@ -1,12 +1,16 @@
 # LID-Fingerprint
 
-How to run the LID-Fingerprint code:
+To run the LID-Fingerprint code for create binary fingerprints, do the following:
 
 First: use "make clean" command to clean all objects files
 
 Second: use "make all" command to make an executable files 
 
 Third: use "bash bash.sh" to reun the main file (franc). You need to change the path to the correct path of the dataset in the bash file.
+
+
+To search the created binary fingerprints, run the bash script under "Linear_Scan_Search/src/" directory
+
 
 Reference:
 
