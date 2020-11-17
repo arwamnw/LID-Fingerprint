@@ -12,12 +12,12 @@
 #^^^^
 
 #source /afs/cad.njit.edu/research/ccs/oria/2/Clustering/nnfdes/src/bash.sh
-franc=/home/a/amw7/Hill_ID_NNWID_Descent/NNFDecsent_Wighted_HillID_fix_r_neighbors_of_each_features_Print_Binary_data/src/franc
-p_datasets=/home/a/amw7/
-p_data=/home/a/amw7/
-pwd=${p_datasets}RLCT/
-ped=${p_data}RLCT/
-dataset=RLCT
+franc=/LID-Fingerprint/src/franc
+p_datasets=/LID-Fingerprint/
+p_data=/LID-Fingerprint/
+pwd=${p_datasets}ALOI-100-Dataset/
+ped=${p_data}ALOI-100-Dataset/
+dataset=ALOI-100
 t=400
 spa=5
 rho=1.0
@@ -25,7 +25,7 @@ Iter=70
 
 z=0.0025
 echo ${dataset}
-spa=$((/afs/cad/linux/anaconda-2.1.0/anaconda/bin/python /home/a/amw7/Sparsification-Kmeans/src/Dataset_Editing/calculate_z.py ${pwd} ${dataset} ${z}) 2>&1)
+spa=$((python /LID-Fingerprint/Dataset_Editing/calculate_z.py ${pwd} ${dataset} ${z}) 2>&1)
 echo ${spa}
 K=100
 echo ${K}
