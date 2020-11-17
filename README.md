@@ -1,5 +1,7 @@
 # LID-Fingerprint
 
+How to run the LID-Fingerprint code:
+
 First: use "make clean" command to clean all objects files
 
 Second: use "make all" command to make an executable files 
