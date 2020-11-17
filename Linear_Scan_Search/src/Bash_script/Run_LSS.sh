@@ -1,13 +1,13 @@
 # Arwa Wali (amw7@njit.edu)
 
 # dataset path
-p_datasets="/Users/arwawali/Google Drive/ResearchDataSets/Statlog/"
+p_datasets="/ALOI-100-Dataset/"
 pwd=${p_datasets}
 output_dir=${p_datasets}"_IH_App_"
 
 echo $output_dir
 # dataset name
-dataset="Statlog"
+dataset="ALOI-100"
 K_dash=200
 #cluster_max_size=1000
 #outlier_threshold=5
@@ -18,7 +18,7 @@ K_dash=200
 COUNTER=0
 while [  $COUNTER -lt 1 ]; do
         echo The counter is $COUNTER
-        output=$(java -jar -Xms256m -Xmx5g -XX:-UseGCOverheadLimit "/Users/arwawali/Documents/NetBeansProjects/Linear_Scan_Search/dist/Linear_Scan_Search.jar" ${p_datasets} ${dataset} ${Bucket} ${stages} ${K_dash})
+        output=$(java -jar -Xms256m -Xmx5g -XX:-UseGCOverheadLimit "/LID-Fingerprint/Linear_Scan_Search/dist/Linear_Scan_Search.jar" ${p_datasets} ${dataset} ${K_dash})
         # save output to file
         destdir=${output_dir}${COUNTER}
         echo "$output" > "$destdir"
