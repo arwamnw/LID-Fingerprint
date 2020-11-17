@@ -18,5 +18,7 @@ LID-Fingerprint: A Local Intrinsic Dimensionality-Based Fingerprinting Method: 1
 https://link.springer.com/chapter/10.1007/978-3-030-02224-2_11
 
 Please use the project information from Zenodo.org for citation:
+
 https://zenodo.org/record/4277984#.X7Q8mJMzYXo
+
 DOI: 10.5281/zenodo.4277984
