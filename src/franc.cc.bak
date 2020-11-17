@@ -1,0 +1,673 @@
+/* franc.cc (main) */
+
+#include <vector>
+#include <algorithm> /* for random_shuffle */
+#include <ctime>
+#include <cstdio>
+#include <cstdlib>
+#include <cassert>
+#include <getopt.h>
+using namespace std;
+
+#include <boost/tokenizer.hpp>
+using boost::tokenizer;
+
+#include "DenMatSin.h"
+#include "global.h"
+#include "KProp.h"
+using namespace kprop;
+
+#include "nndes/nndes.h"
+#include "nndes/nndes-data.h"
+using namespace nndes;
+
+#include "franc.h"
+
+void printUsage(void)
+{
+    printf("usage: franc  [--verbose]\n");
+    printf("              --pwd=<path-to-working-directory>\n");
+    printf("              --ped=<path-to-experiment-directory>\n");
+    printf("              --dataset=<dataset-name>\n");
+    printf("       Parameters of NN-Descent/NNF-Descent:\n");
+    printf("              --K=<#KNN-for-NN-Descent|NNF-Descent>\n");
+    printf("              [--rho=<sample-rate-of-NNF-Descent> default 1.0]\n");
+    printf("              --Iter=<max-#iterations-for-NNF-Descent>\n");
+    printf("              --spa=<max-#dims-to-sparsify-each-time>\n");
+    printf("              [--t=<-:linear|0:auto-t-Gaussian|+:t-Gaussian> default -1]\n");
+    // 
+//     printf("       To test KNN classification:\n");
+//     printf("              [--ann=<path-to-annotations> default .]\n");
+//     printf("              [--size=<%%labeled-items-per-class> default 1]\n");
+//     printf("              [--exp=<experiment-number> default 1]\n");
+
+    printf("\n");
+    printf("              --order=<feature-order-file>\n");/* the first,
+                                                              the worst */
+}
+
+
+int main(int argc, char **argv)
+{
+    /* read parameters */
+    /* system parameters */
+      bool verbose = false;
+    string pwd;            /* directory holding the dataset */
+    string ped;            /* directory holding other information of the dataset */
+    string dataset;        /* name of the dataset */
+    /* NN-Descent / NNF-Descent */
+       int K = -1;         /* #KNN for NN-Descent */
+     float rho = 1.0F;     /* sample rate of NN-Descent */
+       int Iter = -1;       /* max # of iters for NNF-Descent */
+       int spa = -1;       /* max # of dims to sparsify each time */
+     float fixed_t = -1.0F; /* default linear */
+
+//     /* parameters of KNN classification */
+//     string p_ann = "";
+//        int size = 1;
+//        int exp = 1;
+
+    string order = "";
+
+    struct option long_options[] =
+        {
+            /* system parameters */
+            {"verbose",   no_argument,       0,    'v'},
+            {"pwd",       required_argument, 0,    'w'}, /* w: working */
+            {"ped",       required_argument, 0,    'e'}, /* e: experiment */
+            {"dataset",   required_argument, 0,    'n'}, /* n: dataset name */
+            /* NN-Descent / NNF-Descent */
+            {"K",         required_argument, 0,    'K'},
+            {"rho",       required_argument, 0,    'S'}, /* S: same as DCL */
+            {"Iter",      required_argument, 0,    'I'},
+            {"spa",       required_argument, 0,    'z'}, /* z: zero */
+            {"t",         required_argument, 0,    't'},
+//             /* KNN classification */
+//             {"ann",       required_argument, 0,    'a'},
+//             {"size",      required_argument, 0,    's'},
+//             {"exp",       required_argument, 0,    'x'},
+
+            {"order",     required_argument, 0,    'o'},
+            {0,           0,                 0,    0}
+        };
+
+    int option_index = 0;
+    int c;
+    int    simtype; /* similarity type: -1 for linear,
+                       0 for Gaussian auto t,
+                       1 for Gaussin fixed t */
+
+    while ( (c = getopt_long(argc, argv,
+//                     "vw:e:n:K:S:I:z:t:a:s:x:o:",
+                    "vw:e:n:K:S:I:z:t:o:",
+                    long_options, &option_index)) != -1)
+    {
+        switch(c)
+        {
+            case 'v':
+                verbose = true;
+                break;
+            case 'w':
+                pwd = string(optarg);
+                break;
+            case 'e':
+                ped = string(optarg);
+                break;
+            case 'n':
+                dataset = string(optarg);
+                break;
+            case 'K':
+                K = string_as_T<int>(string(optarg));
+                break;
+            case 'S':
+                rho = string_as_T<float>(string(optarg));
+                break;
+            case 'I':
+                Iter = string_as_T<int>(string(optarg));
+                break;
+            case 'z':
+                spa = string_as_T<int>(string(optarg));
+                break;
+            case 't':
+                fixed_t = string_as_T<float>(string(optarg));
+                break;
+//             case 'a':
+//                 p_ann = string(optarg);
+//                 break;
+//             case 's':
+//                 size = string_as_T<int>(string(optarg));
+//                 break;
+//             case 'x':
+//                 exp = string_as_T<int>(string(optarg));
+//                 break;
+            case 'o':
+                order = string(optarg);
+                break;
+            case '?':
+                printUsage();
+                exit(EXIT_FAILURE);
+                break;
+            default:
+                printUsage();
+                exit(EXIT_FAILURE);
+                break;
+        }
+    }
+    if (optind < argc && verbose)
+    {
+        KPROP_WARN("non-option argument(s) ignored: ");
+        while (optind < argc)
+        {
+            fprintf(stderr, "%s ", argv[optind++]);
+        }
+        printf("\n");
+    }
+    /* check configurations */
+    if (pwd == string(""))
+    {
+        KPROP_ERROR("invalid path to working directory.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (ped == string(""))
+    {
+        KPROP_ERROR("invalid path to experiment directory.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (dataset == string(""))
+    {
+        KPROP_ERROR("invalid dataset name.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (order == string(""))
+    {
+        KPROP_ERROR("invalid feature order file.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    /* check configurations */
+    if (pwd == string(""))
+    {
+        KPROP_ERROR("invalid path to working directory.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (ped == string(""))
+    {
+        KPROP_ERROR("invalid path to experiment directory.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (dataset == string(""))
+    {
+        KPROP_ERROR("invalid dataset name.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (K < 1)
+    {
+        KPROP_ERROR("invalid K for NN-Descent/NNF-Descent.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (rho > 1.0F || rho <= 0.0F)
+    {
+        KPROP_ERROR("invalid sampling rate for NN-Descent/NNF-Descent.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (Iter < 1)
+    {
+        KPROP_ERROR("invalid max number of iterations for NNF-Descent.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (spa < 0)
+    {
+        KPROP_ERROR("invalid max number of dimensions to sparsify each time.\n");
+        printUsage();
+        exit(EXIT_FAILURE);
+    }
+    if (fixed_t < -TOLERANCE_VALUE)
+    {
+        simtype = -1;
+    }
+    else if (fixed_t > TOLERANCE_VALUE)
+    {
+        simtype = 1;
+    }
+    else
+    {
+        simtype = 0;
+    }
+
+    if (verbose)
+    {
+        printf("# SYSTEM PARAMETERS:\n");
+        printf("#      Path of working directory: %s\n",
+                                             pwd.c_str());
+        printf("#   Path of experiment directory: %s\n",
+                                             ped.c_str());
+        printf("#                   Dataset name: %s\n",
+                                             dataset.c_str());
+        printf("# NN-DESCENT / NNF-DESCENT PARAMETERS:\n");
+        printf("#                 K of NN-Descent/NNF-Descent: %d\n", K);
+        printf("#     Sampling rate of NN-Descent/NNF-Descent: %f\n", rho);
+        printf("#          Max # of iterations of NNF-Descent: %d\n", Iter);
+        printf("#   Max # of dimensions to sparsify each time: %d\n", spa);
+        printf("#                             Similarity type: ");
+        if (simtype == -1)
+        {
+            printf("linear similarity\n");
+        }
+        else if (simtype == 0)
+        {
+            printf("Gaussian (auto t)\n");
+        }
+        else if (simtype == 1)
+        {
+            printf("Gaussian (fixed t at %f)\n", fixed_t);
+        }
+        else
+        {
+            assert(0);
+        }
+//         printf("# KNN classification parameters:\n");
+//         printf("#                    Path of annotation files: %s\n",
+//                 p_ann.c_str());
+//         printf("#                             Annotation size: %d\n", size);
+//         printf("#                           Experiment number: %d\n", exp);
+//         printf("#\n");
+//         printf("#                          Feature order file: %s\n",
+//                 order.c_str());
+        printf("#\n");
+        fflush(stdout);
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////
+    /* part 1: loading descriptors in KProp dvf format */
+    if (verbose)
+    {
+        printf("# Loading descriptors... Warning: descriptors should be "
+               "standardized beforehand.\n");
+        fflush(stdout);
+    }
+
+    string p_data_dvf = pwd + dataset + string(".dvf");
+    DenMatSin desc(p_data_dvf, true); /* feature values stored here will
+                                         not change */
+    int nr_data = desc.getM();
+    int dim     = desc.getN();
+
+    /* loading true labels */
+    if (verbose)
+    {
+        printf("# Loading true labels...\n");
+        fflush(stdout);
+    }
+    string p_data_lab = ped + dataset + string(".matlab.lab");
+    FILE* fp = fopen(p_data_lab.c_str(), "rt");
+    assert(fp != NULL);
+    int* true_lab = new int[nr_data];
+    int nr_labels = -1; /* labels are 1,2,3,4,...,nr_labels */
+    for (int n = 0; n < nr_data; ++n)
+    {
+        int c = fscanf(fp, "%d\n", true_lab + n);
+        assert(c == 1);
+        if (true_lab[n] > nr_labels)
+            nr_labels = true_lab[n];
+    }
+    fclose(fp);
+
+    /* loading true KNN */
+    if (verbose)
+    {
+        printf("# Loading true KNNs...\n");
+        fflush(stdout);
+    }
+    string p_data_knn_1 = ped + dataset + string(".knn.1");
+    string p_data_knn_2 = ped + dataset + string(".knn.2");
+    DenMatSin true_knns(p_data_knn_1, true);
+    DenMatSin true_knns_dist(p_data_knn_2, true);
+    assert(true_knns.getM() == nr_data);
+    assert(true_knns.getN() > K);
+    assert(true_knns_dist.getM() == nr_data);
+    assert(true_knns_dist.getN() == true_knns.getN());
+    /* no need to validate this KNN, because .knn.1 file is good! */
+
+    /* note, for evaluation, use small_k, default K */
+    int small_k = K;
+
+    /* a matrix saving number of correct neighbors of each data point */
+    DenMatSin nrCorrNeighbors(Iter+1, nr_data);
+    /* the first row will be all zeros */
+
+//     /* for knn classification */
+//     bool is_train[nr_data];
+//     for (int n = 0; n < nr_data; ++n)
+//     {
+//         is_train[n] = false;
+//     }
+// 
+//     string ann = ped + p_ann + dataset + string(".matlab.")
+//         + T_as_string<int>(size) + string("_")
+//         + T_as_string<int>(exp) + string(".ann");
+// 
+//     int train_id;
+//     fp = fopen(ann.c_str(), "rt");
+//     assert(fp!=NULL);
+//     int count = fscanf(fp, "%d", &train_id);
+//     while (count == 1)
+//     {
+//         is_train[train_id - 1] = true;
+//         count = fscanf(fp, "%d", &train_id);
+//     }
+//     fclose(fp);
+    
+
+    float max_graph_dist = -FLT_MAX;
+    float min_graph_dist = FLT_MAX;
+    float auto_t = -1.0F;
+
+    if (simtype == -1) /* linear */
+    {
+        if (verbose) printf("# linear similarity\n");
+        compMaxMinEdgeDist(true_knns_dist, K, &max_graph_dist, &min_graph_dist);
+    }
+    else if (simtype == 0) /* Gaussian auto t */
+    {
+        if (verbose) printf("# Gaussian auto t\n");
+        auto_t = compMeanEdgeDist(true_knns, true_knns_dist, K);
+        auto_t = 2*auto_t*auto_t;
+    }
+    else if (simtype == 1) /* Gaussian fixed t */
+    {
+        if (verbose) printf("# Gaussian t fixed at %f\n", fixed_t);
+    }
+    else
+    {
+        assert(0);
+    }
+    fflush(stdout);
+
+    if (verbose)
+    {
+        printf("# Reading sorted dims, the first the worse...\n");
+    }
+    ifpair* sort_dim = new ifpair[dim];
+    FILE* forder = fopen(order.c_str(), "rt");
+    assert(forder != NULL);
+    for (int d = 0; d < dim; ++d)
+    {
+        int dd;
+        int c = fscanf(forder, "%d\n", &dd);
+        assert(c == 1);
+
+        sort_dim[d].index = dd;
+    }
+
+    if (verbose)
+    {
+        printf("# Removing features for at most %d iterations...\n",
+                Iter);
+        printf("# %d features/data sparsified in each iteration...\n",
+                spa);
+    }
+
+    /// new ///
+    float avg_corr = 0.0F;
+    float best_corr = -1.0F;
+    int   best_corr_iter = -1;
+
+    float avg_ep = 0.0F;
+    float best_ep = -1.0F;
+    int   best_ep_iter = -1;
+
+//     float avg_knn = 0.0F;
+//     float best_knn = -1.0F;
+//     int   best_knn_iter = -1;
+// 
+//     float avg_1nn = 0.0F;
+//     float best_1nn = -1.0F;
+//     int   best_1nn_iter = -1;
+    ///
+    for (int it = 0; it < Iter; ++it) 
+
+    {
+        Dataset<float> desc_for_nndes;
+        desc_for_nndes.load(&desc);
+        OraclePartL2<Dataset<float> > oracle_for_nndes(desc_for_nndes);
+        assert(desc_for_nndes.size() == nr_data);
+        assert(desc_for_nndes.getDim() == dim);
+        
+        for (int d = 0; d < (it+1) * spa; ++d)
+        // for (int d = dim-(it+1)*spa; d < dim; ++d)
+        {
+            int dd = sort_dim[d].index;
+            oracle_for_nndes.valid_dims[dd] = false;
+        }
+
+        // NNDescent<OraclePartL2<Dataset<float> > >
+        //     nndes(nr_data, K, rho, oracle_for_nndes, GRAPH_BOTH);
+        // float total = float(nr_data) * (nr_data - 1) / 2; /* brutal force
+        //                                                      cost */
+        // float Delta = 0.001;
+        // for (int iter = 0; iter < 100; ++iter)
+        // {
+        //     int t = nndes.iterate(); /* do an NN-Descent iteration 
+        //                                 t is actually an estimation of number
+        //                                 of updated items 
+        //                                 (bug 2 in the email, not fixed, not crucial)
+        //                               */
+
+
+        //     float update_rate = (float) t / (K * nr_data); /* update rate 
+        //                                                     * although an estimation,
+        //                                                     * will lead to converge in
+        //                                                     * practice
+        //                                                     */
+        //     float cost_rate = (float) nndes.getCost() / total;
+
+        //     float rec = 0.0F; /* recall */
+        //     const vector<KNN>& curr_knns = nndes.getNN();
+        //     for (int n = 0; n < nr_data; ++n)
+        //     {
+        //         rec += recall( &(true_knns(n, 1)), curr_knns[n], K );
+        //     }
+        //     rec /= (float) nr_data;
+
+        //     // if (verbose)
+        //     // {
+        //     //     printf("# NN-Descent %d, UpdateRate %.2f%%, CostRate %.2f%%, "
+        //     //            "Recall %.2f%%\n",
+        //     //             it+1, update_rate*100.0F, cost_rate*100.0F,
+        //     //             rec*100.0F);
+        //     // }
+        //     if (update_rate < Delta) break;
+        // }
+
+        // assert(validateKnn(nndes.getNN()));
+
+        // float correctness = compCorrectness(nndes.getNN(), true_lab, nr_data,
+        //                                     small_k, nrCorrNeighbors, it+1);
+        // float ep          = compEdgePrecision(nndes.getNN(), true_lab, nr_data,
+        //                                     small_k);
+
+
+        vector<KNN> knns(nr_data);
+        BOOST_FOREACH(KNN &knn, knns)
+        {
+            knn.init(K);
+        }
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+        for (int i = 0; i < nr_data; ++i)
+        {
+            for (int j = i+1; j < nr_data; ++j)
+            {
+                float dist = oracle_for_nndes(i,j);
+                knns[i].update(KNN::Element(j, dist));
+                knns[j].update(KNN::Element(i, dist));
+            }
+        }
+
+        assert(validateKnn(knns));
+
+        float correctness = compCorrectness(knns, true_lab, nr_data,
+                                            small_k, nrCorrNeighbors, it+1);
+        float ep          = compEdgePrecision(knns, true_lab, nr_data,
+                                            small_k);
+
+        float varCorrNeighbors = 0.0F;
+        float meanCorrNeighbors = 0.0F;
+        for (int n = 0; n < nr_data; ++n)
+        {
+            meanCorrNeighbors += nrCorrNeighbors(it+1, n);
+        }
+        meanCorrNeighbors /= (float) nr_data;
+        for (int n = 0; n < nr_data; ++n)
+        {
+            float temp = nrCorrNeighbors(it+1, n) - meanCorrNeighbors;
+            varCorrNeighbors += temp*temp;
+        }
+        varCorrNeighbors /= (float) nr_data;
+        
+
+//         /* knn classification */
+//         const vector<KNN>& curr_knns = nndes.getNN();
+//         int nr_test = 0;
+//         int nr_corr_test = 0;
+//         /// 1nn
+//         int nr_corr_test2 = 0;
+//         ///
+//         for (int n = 0; n < nr_data; ++n)
+//         {
+//             if (is_train[n])
+//                 continue;
+//             nr_test ++;
+//             int votes[nr_labels];
+//             for (int l = 0; l < nr_labels; ++l)
+//             {
+//                 votes[l] = 0;
+//             }
+//             /// 1nn
+//             bool found = false;
+//             int  lab_1nn = -1;
+//             ///
+//             for (int k = 0; k < small_k; ++k)
+//             {
+//                 int key = curr_knns[n][k].key;
+//                 if (is_train[key])
+//                 {
+//                     votes[true_lab[key]-1] ++;
+//                     /// 1nn
+//                     if (!found)
+//                     {
+//                         found = true;
+//                         lab_1nn = true_lab[key]-1;
+//                     }
+//                     ///
+//                 }
+//             }
+//             /// 1nn
+//             if (found && (true_lab[n]-1 == lab_1nn))
+//             {
+//                 nr_corr_test2 ++;
+//             }
+//             ///
+//             int max_votes = -1;
+//             int c = -1;
+//             for (int l = 0; l < nr_labels; ++l)
+//             {
+//                 if (votes[l] > max_votes)
+//                 {
+//                     max_votes = votes[l];
+//                     c = l;
+//                 }
+//             }
+//             if (max_votes > 0)
+//             {
+//                 if (true_lab[n] - 1 == c)
+//                 {
+//                     nr_corr_test ++;
+//                 }
+//             }
+//         }
+//         float caccuracy = (float) nr_corr_test / nr_test;
+//         /// 1nn
+//         float caccuracy2 = (float) nr_corr_test2 / nr_test;
+//         ///
+
+
+
+//         // printf("%d\t%.2f%%\t%.2f%%\t%f\t%.2f%%\n",
+//         //         it+1, correctness*100.0F, ep*100.0F, varCorrNeighbors,
+//         //         caccuracy*100.0F);
+//         /// 1nn
+//         printf("%d\t%.2f%%\t%.2f%%\t%f\t%.2f%%\t%.2f%%\n",
+//                 it+1, correctness*100.0F, ep*100.0F, varCorrNeighbors,
+//                 caccuracy*100.0F,
+//                 caccuracy2*100.0F);
+        ///
+        printf("%d\t%.2f%%\t%.2f%%\t%f\n",
+                it+1, correctness*100.0F, ep*100.0F, varCorrNeighbors);
+        fflush(stdout);
+
+        /// new ///
+        avg_corr += correctness;
+        if (correctness > best_corr)
+        {
+            best_corr = correctness;
+            best_corr_iter = it+1;
+        }
+
+        avg_ep += ep;
+        if (ep > best_ep)
+        {
+            best_ep = ep;
+            best_ep_iter = it+1;
+        }
+
+        // avg_knn += caccuracy;
+        // if (caccuracy > best_knn)
+        // {
+        //     best_knn = caccuracy;
+        //     best_knn_iter = it+1;
+        // }
+        // avg_1nn += caccuracy2;
+        // if (caccuracy2 > best_1nn)
+        // {
+        //     best_1nn = caccuracy2;
+        //     best_1nn_iter = it+1;
+        // }
+        ///
+
+    }
+    /// new ///
+    avg_corr /= (float) Iter;
+    avg_ep   /= (float) Iter;
+//     avg_knn /= (float) Iter;
+//     avg_1nn /= (float) Iter;
+//     printf("# AVGTP: %.2f%%, BESTTP: %.2f%%(%d), AVGKNN: %.2f%%, BESTKNN: %.2f%%(%d), AVG1NN: %.2f%%, BEST1NN: %.2f%%(%d)\n",
+//             avg_corr*100.0F, best_corr*100.0F, best_corr_iter,
+//             avg_knn*100.0F, best_knn*100.0F, best_knn_iter,
+//             avg_1nn*100.0F, best_1nn*100.0F, best_1nn_iter);
+    printf("# AVGTP: %.2f%%, BESTTP: %.2f%%(%d), AVGEP: %.2f%%, BESTEP: %.2f%%(%d)\n",
+            avg_corr*100.0F, best_corr*100.0F, best_corr_iter,
+            avg_ep*100.0F,   best_ep*100.0F,   best_ep_iter);
+    ///
+
+    delete[] sort_dim;
+    delete[] true_lab;
+
+    if (verbose)
+    {
+        printf("# Done.\n\n");
+    }
+    return 0;
+}

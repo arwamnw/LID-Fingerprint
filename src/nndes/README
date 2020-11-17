@@ -1,0 +1,89 @@
+Modified nndes by Jichao (also commented)
+
+1. a bug fix, see attached email exchanges with Wei Dong (the first fixed)
+2. nndes-data-avx.h and nndes-data-sse2.h go into nndes-data.h
+3. nndes uses DenMatSin class and compatible with KProp
+4. nndes.cpp and Makefile are for the standalone program, deleted
+
+To use, include both nndes-data.h and nndes.h.
+
+EMAILS:
+**************************************************************************
+Hello Wei,
+
+I am using your NN-Descent code (nndes) for approximate KNNG construction.
+Since I need to modify the code a little bit, I went into the very details
+of the code and found some possible problems.
+
+The code was downloaded from http://code.google.com/p/nndes/, and one
+problem is related to the header file nndes.h from line 127 to line 163 in
+function iterate(). There are three if-blocks as follows (in the comments,
+when I say nn_new <--> nn_old, I mean comparing two items, one from nn_new
+and the other from nn_old, and so on):
+
+    if (option & GRAPH_KNN) {
+        // nn_new <--> nn_new nn_new <--> nn_old
+    } if (option & GRAPH_RNN) {
+        // rnn_new <--> rnn_new rnn_new <--> rnn_old
+    } if (option & GRAPH_BOTH) {
+        // nn_new <--> rnn_old nn_new <--> rnn_new nn_old <--> rnn_new
+    }
+
+By the default configuration, GRAPH_BOTH (=4) will selected, so the first
+two if-conditional tests will fail (because GRAPH_KNN=1 and GRAPH_RNN=2).
+This means by default (GRAPH_BOTH), the code does not compare an item from
+nn_new to another item from nn_new. This conflicts with the paper I guess.
+I think the paper says if we use both KNN and RNN, all the 7 cases above
+should be considered. Am I wrong at some point? I did a quick "fix" to the
+above code which changes the first two if-statement into: if ( (option &
+GRAPH_KNN) || (option & GRAPH_BOTH) ), and if ( (option & GRAPH_RNN) ||
+(option & GRAPH_BOTH) ) and tested the new code using a small dataset. The
+results showed that the accuracy (recall) improves but the cost becomes
+larger.
+
+Another problem is also in this function, line 194: t += nn_new[i].size();
+which accumulate the number of updates of KNN entries. The line of code
+adds to t the number of KNN entries with a "true" flag. When the sample
+rate (rho) is 1.0, I have no questions about this. But when the sample rate
+is less than one, not all the "true" KNN entries are newly updated, it
+seems to me that there are some leftover unsampled KNN entries still marked
+as "true" (at least in the first few iterations). So is it the most proper
+way to count the number of updates?
+
+Could you please have a look at your code when you have time and tell me if
+I am right or wrong at these points?
+
+
+Thanks,
+Jichao
+
+**************************************************************************
+Jichao,
+
+Your fix to the GRAPH_BOTH problem seems to be correct -- another fix would
+be to set GRAPH_BOTH=3 although I'm not sure if it will break other lines.
+I can no longer trace my revision to the one which produce the plots in the
+paper, but there's a good chance the bug has been there before the paper
+was published.  If that's the case, then the portion of the paper
+describing the method of the GRAPH_BOTH case is not correctly reflecting
+what's really done in the program.  The good news is that I think the
+accuracy and cost counting should still be correct, and the claimed
+performance in the paper should still be true.  I won't change the code in
+the repository so the results of the paper could still be reproduced by our
+code.
+
+Regarding line 194, sampling is done after the KNN list is updated, and it
+should be considered part of the next iteration. I think the counting is
+correct.
+
+Thanks for looking into our program so carefully.
+
+- Wei
+
+**************************************************************************
+Actually I think your point about line 194 is also correct: the returned
+value is an approximation.  As I recall, this behavior is intended for
+performance reason, and such approximation shouldn't affect the
+performance.
+
+- Wei 

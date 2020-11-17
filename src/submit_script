@@ -1,0 +1,106 @@
+#!/bin/bash
+###############################################################################
+#
+# This is a FAKE PARALLEL job submit script.
+# It claims # cores to get exclusive use of a node.
+# This assumes all nodes in the queue have the same number of queues.
+# 6-Jul-2016 /KJW
+#
+# To use, change all of the following to real values:
+#     JOB_NAME, UCID, NUMBER_OF_CPUS, /path/to/your/mpi/prog
+# You must also un-comment one of the "module load mpi" lines.
+#
+# Please see https://wiki.hpc.arcs.njit.edu/ for additional information.
+#
+# Modified by Basement Supercomputing 1/2/2006 DJE
+# Modified for NJIT - AM 18Apr06
+# Updated for modules, QRSH_PORT, additional documenation. 31-Aug-2015 /KJW
+#
+###############################################################################
+# Change JOB_NAME to a one-word alphanumeric description. This will be used for
+# part of output file name and in status listings.
+###############################################################################
+# Set name, used for several things including outputfile names.  6-Jul-2016 /KJW
+#$ -N TestBatch
+
+###############################################################################
+# Specify queue to run on.
+###############################################################################
+# Specify "long" queue for now, change to "oria-long" later.  6-Jul-2016 /KJW
+#$ -q long
+
+###############################################################################
+# Send email when jobs starts and again when it finishes or if it aborts.
+###############################################################################
+#$ -M amw7@njit.edu
+#$ -m abe
+
+###############################################################################
+# Use current working directory where "qsub" was invoked.
+###############################################################################
+#$ -cwd
+
+###############################################################################
+# Join stdout and stderr
+###############################################################################
+#$ -j y
+
+###############################################################################
+# Set your number of processors here by changing NUMBER_OF_CPUS to an integer
+# value.
+#
+# This example makes use of mpich2 parallel environment (PE); the other PEs are:
+#
+#      make
+#      ompi
+#      threaded
+#      matlab
+#      fluent_pe
+# 
+# Substitue just "mpich2" to one of the above PEs if desired.
+###############################################################################
+# Set to 8 cores.  Use "threaded" PE so stays on one node.  6-Jul-2016 /KJW
+#$ -pe threaded 1
+
+###############################################################################
+# Run job through bash shell
+###############################################################################
+#$ -S /bin/bash
+
+###############################################################################
+# Choose the appropriate mpirun to use by uncommenting ONE of the following.
+# If the one you want doesn't appear here type or if you are using a different
+# parallel envirnment that mpich2, use "module avail" to see full list modules.
+# Note that you must use the same one you used to compile your program!
+###############################################################################
+# module load mpi/mpich2-gnu4
+# module load mpi/mpich2-omx-gnu4
+# module load mpi/openmpi-cuda-gnu4
+# module load mpi/openmpi-gnu4
+# module load mpi/openmpi-intel
+# None of the above are needed, we're faking PE.  6-Jul-2016 /KJW
+
+###############################################################################
+# The following are for reporting only and not really needed to run the job; 
+# their results will show up in your output file.
+# The "mpirun" line is relevant only to the mpich2 parallel environment.
+###############################################################################
+echo "Got $NSLOTS processors."
+echo "QRSH_PORT=${QRSH_PORT:-none}"
+echo "mpirun=$(which mpirun)"
+echo "cwd=$(pwd)"
+
+###############################################################################
+# Set full path to your program or ./ it if in current directory.  You can pass
+# options to your program if desired.  Examples:
+#
+#      mpirun -np $NSLOTS /home/w/walsh/foo/bar/frobinate
+#      mpirun -np $NSLOTS ./frobinate
+#      mpirun -np $NSLOTS ./burger --with-mayo --no-tomato 42
+#
+# These are particular to the mpich2 parallel envrionment, please refer to
+# documentation of other PEs for invocation syntax.
+###############################################################################
+#mpirun -np $NSLOTS /path/to/your/mpi/prog
+# Actual invocation of processes.  6-Jul-2016 /KJW
+bash bash.sh
